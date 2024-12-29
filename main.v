@@ -153,17 +153,16 @@ fn main() {
 	app.gg.run()
 }
 
+@[direct_array_access]
 fn argb8_to_rgba8(mut buf []u32) {
 	// argb -> rgba
 	for i in 0 .. buf.len {
 		p := buf[i]
-		r := (p & 0xFF0000) >> 16
-		g := (p & 0xFF00) >> 8
-		b := (p & 0xFF)
-		buf[i] = 0xFF000000 | (b << 16) | (g << 8) | r // little endian, ABGR -> big endian RGBA
+		buf[i] = 0xFF000000 | ((p & 0xFF) << 16) | (p & 0xFF00) | ((p & 0x00FF0000) >> 16) // big endian RGBA
 	}
 }
 
+@[direct_array_access]
 fn draw_colormap(cm []u32, mut data []u32) {
 	data[0] = 0xFF000000
 	data[width] = 0xFF000000
@@ -179,6 +178,7 @@ fn draw_colormap(cm []u32, mut data []u32) {
 }
 
 // densities is a Renderer type function
+@[direct_array_access]
 fn densities(l Lattice, cm []u32, mut output []u32) {
 	mut ind := 0
 
@@ -200,6 +200,7 @@ fn densities(l Lattice, cm []u32, mut output []u32) {
 }
 
 // h_speed is a Renderer type function
+@[direct_array_access]
 fn h_speed(l Lattice, cm []u32, mut output []u32) {
 	mut ind := 0
 
@@ -221,6 +222,7 @@ fn h_speed(l Lattice, cm []u32, mut output []u32) {
 }
 
 // h_speed is a Renderer type function
+@[direct_array_access]
 fn v_speed(l Lattice, cm []u32, mut output []u32) {
 	mut ind := 0
 
@@ -242,6 +244,7 @@ fn v_speed(l Lattice, cm []u32, mut output []u32) {
 }
 
 // vorticity is a Renderer type function
+@[direct_array_access]
 fn vorticity(l Lattice, cm []u32, mut output []u32) {
 	mut min := 0.0
 	mut max := 0.0
