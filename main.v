@@ -22,21 +22,13 @@
 
     v -prod -cc gcc .
 
-	SDL module must be installed: https://vpm.vlang.io/packages/sdl
-	and post install script executed, see link.
-
-	The simulation is quite slow, but would you like to slow it down, just
- 	uncomment the sdl.delay(...) in file.
-
-
-
     This program is released under MIT license.
  */
 module main
 
-import sdl
-import sdl.image as img
+import gg
 import os
+import stbi
 import time
 
 const tau = 0.6 // Relaxation time, related to fluid viscosity.
@@ -55,9 +47,63 @@ type Renderer = fn (l Lattice, cm []u32, mut output []u32)
 const renderers = [vorticity, v_speed, h_speed, densities]
 const renderers_names = ['vorticity', 'vertical speed', 'horizontal speed', 'density']
 
+@[heap]
+struct App {
+mut:
+	gg            &gg.Context = unsafe { nil }
+	iidx          int
+	render_method Renderer = unsafe { nil }
+	pixel_buffer  []u32
+	cm            []u32
+	src           Lattice
+	dst           Lattice
+}
+
+fn (mut app App) on_init() {
+	app.iidx = app.gg.new_streaming_image(width, height, 4, pixel_format: .rgba8)
+}
+
+fn (mut app App) on_keydown(code gg.KeyCode, mod gg.Modifier, data voidptr) {
+	match code {
+		.v {
+			// Show next view
+			mut i := renderers.index(app.render_method)
+			i = (i + 1) % renderers.len
+			app.render_method = renderers[i]
+			println('Rendering : ${renderers_names[i]}')
+		}
+		.escape {
+			app.gg.quit()
+		}
+		else {}
+	}
+}
+
+fn (mut app App) on_frame() {
+	mut stop_watch := time.new_stopwatch()
+	app.src.move(mut app.dst)
+	app.dst.collide()
+	app.render_method(app.dst, app.cm, mut app.pixel_buffer) // render_method can point different method !
+	draw_colormap(app.cm, mut app.pixel_buffer)
+
+	// swap src and dst buffers.
+	tmp := app.src
+	app.src = app.dst
+	app.dst = tmp
+
+	mut istream_image := app.gg.get_cached_image_by_idx(app.iidx)
+	istream_image.update_pixel_data(unsafe { &u8(app.pixel_buffer.data) })
+	stop_watch.stop()
+	// println('Frame ${app.gg.frame}, loop : ${stop_watch.elapsed().milliseconds()} milliseconds. ')
+
+	size := gg.window_size()
+	app.gg.begin()
+	app.gg.draw_image(0, 0, size.width, size.height, istream_image)
+	app.gg.end()
+}
+
 fn main() {
 	argv := os.args.len
-
 	if argv != 2 {
 		println('Usage: lbm profile_file.png')
 		println('       e.g:  ./lbm profiles/circle.png')
@@ -65,148 +111,45 @@ fn main() {
 		return
 	}
 
-	if sdl.init(sdl.init_video) < 0 {
-		eprintln('sdl.init() error: ${unsafe { cstring_to_vstring(sdl.get_error()) }}')
-		return
-	}
-
-	flags := u32(sdl.WindowFlags.opengl) | u32(sdl.WindowFlags.resizable)
-	window := sdl.create_window(c'Lattice Boltzmann Method [D2Q9]', sdl.windowpos_centered,
-		sdl.windowpos_centered, width * 2, height * 2, flags)
-
-	if window == sdl.null {
-		eprintln('sdl.create_window() error: ${unsafe { cstring_to_vstring(sdl.get_error()) }}')
-		return
-	}
-
-	r_flags := u32(sdl.RendererFlags.accelerated)
-	renderer := sdl.create_renderer(window, -1, r_flags)
-
-	if renderer == sdl.null {
-		eprintln('sdl.create_renderer() error: ${unsafe { cstring_to_vstring(sdl.get_error()) }}')
-		return
-	}
-
-	mut tex := sdl.create_texture(renderer, sdl.Format.argb8888, sdl.TextureAccess.streaming,
-		width, height)
-
-	if tex == sdl.null {
-		eprintln('sdl.create_texture() error: ${unsafe { cstring_to_vstring(sdl.get_error()) }}')
-		return
-	}
-
-	defer {
-		sdl.destroy_texture(tex)
-		sdl.destroy_renderer(renderer)
-		sdl.destroy_window(window)
-	}
-
-	profile := img.load(os.args[1].str)
-	if profile == sdl.null {
-		eprintln('Error trying to load profile .png file: ${unsafe { cstring_to_vstring(sdl.get_error()) }}')
-		return
-	}
-
+	profile := stbi.load(os.args[1])!
 	// Check size compatibility.
-	if profile.w != width || profile.h != height {
-		eprintln('Error, "${os.args[1]}" profile image must match lbm lattice size : ${profile.w}x${profile.h}')
+	if profile.width != width || profile.height != height {
+		eprintln('Error, "${os.args[1]}" profile image must match lbm lattice size : ${profile.width}x${profile.height}')
 		return
+	}
+	mut profile_pixels := []u8{len: profile.width * profile.height}
+	for i in 0 .. profile_pixels.len {
+		profile_pixels[i] = unsafe { (&u8(profile.data))[4 * i] }
 	}
 
-	// Check profile is 1 byte / pixel.
-	if (profile.pitch / width) != 1 {
-		eprintln('Error profile file must be 1 byte per pixel')
-		return
-	}
+	mut app := &App{}
+	app.gg = gg.new_context(
+		width:        width * 2
+		height:       height * 2
+		window_title: 'Lattice Boltzmann Method [D2Q9]'
+		init_fn:      app.on_init
+		frame_fn:     app.on_frame
+		keydown_fn:   app.on_keydown
+		user_data:    app
+	)
 
 	// Build a colormap to be used
-	cm := Colormap.dual(low_color, middle_color, high_color, 384)
+	app.cm = Colormap.dual(low_color, middle_color, high_color, 384)
 
 	// Now create Lattices, with respect to loaded profile.
-	mut src := Lattice.new(width, height, profile.pixels)
+	app.src = Lattice.new(width, height, profile_pixels.data)
 
-	src.add_flow(1.0, Vi.east)
-	src.randomize(0.2)
-	src.normalize()
+	app.src.add_flow(1.0, Vi.east)
+	app.src.randomize(0.2)
+	app.src.normalize()
 
-	mut dst := Lattice.new(width, height, profile.pixels)
+	app.dst = Lattice.new(width, height, profile_pixels.data)
 
 	// Allocate pixel buffer to draw in.
-	mut pixel_buffer := []u32{len: width * height} // Dyn array heap allocated.
-
-	mut should_close := false
-	mut frame := 0
-	mut render_method := vorticity
-
+	app.pixel_buffer = []u32{len: width * height} // Dyn array heap allocated.
+	app.render_method = vorticity
 	println('Showing vorticiy. Press "v" to show different parameters.')
-
-	for {
-		evt := sdl.Event{}
-		for 0 < sdl.poll_event(&evt) {
-			match evt.@type {
-				.quit {
-					should_close = true
-				}
-				.keydown {
-					key := unsafe { sdl.KeyCode(evt.key.keysym.sym) }
-					if key == sdl.KeyCode.escape {
-						should_close = true
-						break
-					}
-					// Show next view
-					if key == sdl.KeyCode.v {
-						mut i := renderers.index(render_method)
-						i++
-						if i >= renderers.len {
-							i = 0
-						}
-						render_method = renderers[i]
-						println('Rendering : ${renderers_names[i]}')
-					}
-				}
-				else {}
-			}
-		}
-		if should_close {
-			break
-		}
-
-		mut stop_watch := time.new_stopwatch()
-		src.move(mut dst)
-		dst.collide()
-		render_method(dst, cm, mut pixel_buffer) // render_method can point different method !
-		draw_colormap(cm, mut pixel_buffer)
-
-		// swap src and dst buffers.
-		tmp := src
-		src = dst
-		dst = tmp
-
-		blit_pixels(tex, pixel_buffer)
-		frame++
-		stop_watch.stop()
-		// println('Frame ${frame}, loop : ${stop_watch.elapsed().milliseconds()} milliseconds. ')
-
-		sdl.render_clear(renderer)
-		sdl.render_copy(renderer, tex, sdl.null, sdl.null)
-		sdl.render_present(renderer)
-		// sdl.delay(10)
-	}
-}
-
-// No bound checking here
-// blit_pixels from buffer to texture.
-@[direct_array_access]
-fn blit_pixels(t &sdl.Texture, data []u32) {
-	mut pixels := unsafe { voidptr(nil) }
-	mut pitch := int(0)
-
-	success := sdl.lock_texture(t, sdl.null, &pixels, &pitch)
-	if success < 0 {
-		panic('sdl.lock_texture error: ${sdl.get_error()}')
-	}
-	unsafe { vmemcpy(pixels, data.data, len_in_bytes) }
-	sdl.unlock_texture(t)
+	app.gg.run()
 }
 
 fn draw_colormap(cm []u32, mut data []u32) {
