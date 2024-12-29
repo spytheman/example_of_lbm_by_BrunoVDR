@@ -16,11 +16,11 @@
 
     to compile the program from within source directory:
 
-    v -prod -d sdl_memory_no_gc .
+    v -prod .
 
 	or if you want gcc as compiler:
 
-    v -prod -cc gcc -d sdl_memory_no_gc .
+    v -prod -cc gcc .
 
 	SDL module must be installed: https://vpm.vlang.io/packages/sdl
 	and post install script executed, see link.
@@ -48,7 +48,6 @@ const obstacle_color = u32(0xFF004000)
 const low_color = u32(0xFFFFFF00)
 const middle_color = u32(0xFF000000)
 const high_color = u32(0xFF00FFFF)
-
 
 // Type for rendering methods, used as parameter.
 type Renderer = fn (l Lattice, cm []u32, mut output []u32)
@@ -186,12 +185,12 @@ fn main() {
 		blit_pixels(tex, pixel_buffer)
 		frame++
 		stop_watch.stop()
-		//println('Frame ${frame}, loop : ${stop_watch.elapsed().milliseconds()} milliseconds. ')
+		// println('Frame ${frame}, loop : ${stop_watch.elapsed().milliseconds()} milliseconds. ')
 
 		sdl.render_clear(renderer)
 		sdl.render_copy(renderer, tex, sdl.null, sdl.null)
 		sdl.render_present(renderer)
-		//sdl.delay(10)
+		// sdl.delay(10)
 	}
 }
 
@@ -323,7 +322,7 @@ fn vorticity(l Lattice, cm []u32, mut output []u32) {
 			if id < 0 {
 				id = 0
 			} else if id >= cm.len {
-				id = u32(cm.len -1)
+				id = u32(cm.len - 1)
 			}
 			output[ind] = cm[id]
 		}

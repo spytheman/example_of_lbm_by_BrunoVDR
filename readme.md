@@ -15,11 +15,11 @@ obstacle.
 
 to compile the program from within source directory:
 
-v -prod -d sdl_memory_no_gc .
+v -prod .
 
 or if you want gcc as compiler:
 
-v -prod -cc gcc -d sdl_memory_no_gc .
+v -prod -cc gcc .
 
 SDL module must be installed: https://vpm.vlang.io/packages/sdl
 and post install script executed, see link.
