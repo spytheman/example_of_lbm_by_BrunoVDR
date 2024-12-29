@@ -91,6 +91,7 @@ fn (mut app App) on_frame() {
 	app.src = app.dst
 	app.dst = tmp
 
+	argb8_to_rgba8(mut app.pixel_buffer)
 	mut istream_image := app.gg.get_cached_image_by_idx(app.iidx)
 	istream_image.update_pixel_data(unsafe { &u8(app.pixel_buffer.data) })
 	stop_watch.stop()
@@ -126,7 +127,7 @@ fn main() {
 	app.gg = gg.new_context(
 		width:        width * 2
 		height:       height * 2
-		window_title: 'Lattice Boltzmann Method [D2Q9]'
+		window_title: 'Lattice Boltzmann Method [D2Q9] (ported to gg)'
 		init_fn:      app.on_init
 		frame_fn:     app.on_frame
 		keydown_fn:   app.on_keydown
@@ -150,6 +151,17 @@ fn main() {
 	app.render_method = vorticity
 	println('Showing vorticiy. Press "v" to show different parameters.')
 	app.gg.run()
+}
+
+fn argb8_to_rgba8(mut buf []u32) {
+	// argb -> rgba
+	for i in 0 .. buf.len {
+		p := buf[i]
+		r := (p & 0xFF0000) >> 16
+		g := (p & 0xFF00) >> 8
+		b := (p & 0xFF)
+		buf[i] = 0xFF000000 | (b << 16) | (g << 8) | r // little endian, ABGR -> big endian RGBA
+	}
 }
 
 fn draw_colormap(cm []u32, mut data []u32) {
