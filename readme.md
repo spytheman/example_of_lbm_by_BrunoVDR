@@ -1,3 +1,6 @@
+NOTE: the original is here: https://github.com/Bruno-Vdr/lbm .
+=====================================================================
+
 This program is about D2Q9 Lattice Boltzmann Method:
 See : https://en.wikipedia.org/wiki/Lattice_Boltzmann_methods
 
